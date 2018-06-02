@@ -1,8 +1,8 @@
+using AccediaLocator.Models;
 using Amazon;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Lambda.Core;
-using Amazon.Runtime;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -14,21 +14,11 @@ namespace AccediaLocator
 {
     public class UserLoginFunction
     {
-        private readonly string _accessKey;
-        private readonly string _secretKey;
         private readonly string _tableName = "accedia-locator-users";
-        //private readonly string _serviceUrl;
-
-        public UserLoginFunction()
-        {
-            _accessKey = Environment.GetEnvironmentVariable("AccessKey");
-            _secretKey = Environment.GetEnvironmentVariable("SecretKey");
-            //_serviceUrl = Environment.GetEnvironmentVariable("ServiceURL");
-        }
 
         //Function Handler is an entry point to start execution of Lambda Function.  
         //It takes Input Data as First Parameter and ObjectContext as Second  
-        public async Task FunctionHandler(string username, ILambdaContext context)
+        public async Task FunctionHandler(UserLoginModel loginModel, ILambdaContext context)
         {
             //Write Log to Cloud Watch using Console.WriteLline.    
             Console.WriteLine("Execution started for function -  {0} at {1}",
@@ -36,11 +26,11 @@ namespace AccediaLocator
 
             // Create  dynamodb client  
             var dynamoDbClient = new AmazonDynamoDBClient(
-                new BasicAWSCredentials(_accessKey, _secretKey),
                 new AmazonDynamoDBConfig
                 {
                     //ServiceURL = _serviceUrl,
-                    RegionEndpoint = RegionEndpoint.USEast1
+                    RegionEndpoint = RegionEndpoint.USEast1,
+                    
                 });
 
             //Create Table if it Does Not Exists  
@@ -48,11 +38,18 @@ namespace AccediaLocator
 
             // Insert record in dynamodbtable  
             LambdaLogger.Log("Insert record in the table");
-            await dynamoDbClient.PutItemAsync(_tableName, new Dictionary<string, AttributeValue>
+            await dynamoDbClient.PutItemAsync(new PutItemRequest
+            {
+                ConditionExpression = "attribute_not_exists(Username)",
+                TableName = _tableName,
+                Item = new Dictionary<string, AttributeValue>
                 {
-                    { "Username", new AttributeValue(username) },
-                    { "IsInOffice", new AttributeValue{ BOOL = false} }
-                 });
+                    { "Username", new AttributeValue(loginModel.UserName.ToLowerInvariant()) },
+                    { "Fullname", new AttributeValue{ S = loginModel.FullName} },
+                    { "IsInOffice", new AttributeValue{ BOOL = false} },
+                    { "Room", new AttributeValue{ S = "Out" } }
+                 }
+            });
 
             //Write Log to cloud watch using context.Logger.Log Method  
             context.Logger.Log(string.Format("Finished execution for function -- {0} at {1}",
