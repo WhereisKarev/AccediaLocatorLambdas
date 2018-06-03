@@ -44,7 +44,8 @@ namespace AccediaLocator
             {
                 throw new ArgumentNullException("room");
             }
-            else if (locationModel.Room == "somewhere")
+
+            if (locationModel.Room == "somewhere")
             {
                 await dynamoDbClient.UpdateItemAsync(new UpdateItemRequest
                 {
