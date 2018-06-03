@@ -150,6 +150,9 @@ namespace AccediaLocator
             if (intentRequest.Intent.Slots.TryGetValue("name", out var nameSlot))
             {
                 string name = nameSlot.Value.ToLower();
+
+                logger.LogLine($"Looking for person with name: {name}");
+
                 // Create  dynamodb client  
                 var dynamoDbClient = new AmazonDynamoDBClient(
                     new AmazonDynamoDBConfig
@@ -217,6 +220,9 @@ namespace AccediaLocator
             if (intentRequest.Intent.Slots.TryGetValue("name", out var nameSlot))
             {
                 string name = nameSlot.Value.ToLower();
+
+                logger.LogLine($"Looking for person with name: {name}");
+
                 // Create  dynamodb client  
                 var dynamoDbClient = new AmazonDynamoDBClient(
                     new AmazonDynamoDBConfig
