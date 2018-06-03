@@ -13,9 +13,9 @@
     "function-runtime" : "dotnetcore2.0",
     "function-memory-size" : 256,
     "function-timeout"     : 30,
-    "function-handler"     : "AccediaLocator::AccediaLocator.UserLoginFunction::FunctionHandler",
-    "function-name"        : "UserLogin",
+    "function-handler"     : "AccediaLocator::AccediaLocator.UserIsInOfficeFunction::FunctionHandler",
+    "function-name"        : "UserInOffice",
     "function-role"        : "arn:aws:iam::954947865709:role/AccediaLocatorLambdaRole",
     "tracing-mode"         : "PassThrough",
-    "environment-variables" : "\"AccessKey\"=\"\";\"SecretKey\"=\"\""
+    "environment-variables" : ""
 }

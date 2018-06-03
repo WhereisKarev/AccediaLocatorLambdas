@@ -32,7 +32,7 @@ namespace AccediaLocator
             switch (input.Request)
             {
                 case LaunchRequest launchRequest: return HandleLaunch(launchRequest, logger);
-                case IntentRequest intentRequest: return await HandleIntent(intentRequest, logger);
+                case IntentRequest intentRequest: return await HandleIntent(input, logger);
             }
 
             throw new NotImplementedException("Unknown request type.");
@@ -46,6 +46,8 @@ namespace AccediaLocator
             _isPersonHereNegativeResponses = InitializeIsPersonHereNegativeResponses();
             _whereIsPersonResponses = InitializeWhereIsPersonResponses();
             _somewhereInOfficeResponses = InitializeSomewhereInOfficeResponses();
+            _isPersonHereTodayResponses = InitializePersonHereTodayResponses();
+            _isPersonNotHereTodayResponses = InitializePersonNotHereTodayResponses();
         }
         #endregion
 
@@ -54,6 +56,8 @@ namespace AccediaLocator
         private List<string> _isPersonHereNegativeResponses;
         private List<string> _whereIsPersonResponses;
         private List<string> _somewhereInOfficeResponses;
+        private List<string> _isPersonHereTodayResponses;
+        private List<string> _isPersonNotHereTodayResponses;
 
         private List<string> InitializeWhereIsPersonResponses()
         {
@@ -75,12 +79,9 @@ namespace AccediaLocator
             List<string> responses = new List<string>();
 
             responses.Add("Nope, {0} is not here.");
-            responses.Add("No, {0} is not here yet.");
-            responses.Add("No, {0} has not arrived at the office.");
             responses.Add("This {0} person, you are looking for is not here.");
             responses.Add("{0}, is not here.");
             responses.Add("{0} is not in the office.");
-            responses.Add("Nope, {0} did not come to work today.");
 
             return responses;
         }
@@ -111,6 +112,26 @@ namespace AccediaLocator
             };
         }
 
+        private List<string> InitializePersonNotHereTodayResponses()
+        {
+            return new List<string>
+            {
+                "{0} does not intend to come to work today",
+                "I guess that {0} is still sleeping home",
+                "{0} is not here today",
+                "{0} has not come to the office yet"
+            };
+        }
+
+        private List<string> InitializePersonHereTodayResponses()
+        {
+            return new List<string>
+            {
+                "Yes, {0} is in the office today",
+                "{0} came to work today, probably, but he did not accept my privacy policy to allow me track him in the office"
+            };
+        }
+
         private string GetResponse(List<string> responses, params string[] pars)
         {
             Random rand = new Random();
@@ -125,8 +146,9 @@ namespace AccediaLocator
         /// <summary>
         /// Handles the intent and returns the required information
         /// </summary>
-        private async Task<SkillResponse> HandleIntent(IntentRequest intentRequest, ILambdaLogger logger)
+        private async Task<SkillResponse> HandleIntent(SkillRequest skillRequest, ILambdaLogger logger)
         {
+            IntentRequest intentRequest = skillRequest.Request as IntentRequest;
             if (intentRequest.Intent.Name == "PersonIsInOfficeIntent")
             {
                 return await HandleIsPersonInOfficeIntent(intentRequest, logger);
@@ -134,6 +156,10 @@ namespace AccediaLocator
             else if (intentRequest.Intent.Name == "WhereIsPersonIntent")
             {
                 return await HandlewhereIsPersonIntent(intentRequest, logger);
+            }
+            else if (intentRequest.Intent.Name == "PersonCameToWorkToday")
+            {
+                return await HandlePersonCameToWorkToday(skillRequest, logger);
             }
             else
             {
@@ -251,6 +277,72 @@ namespace AccediaLocator
                     else
                     {
                         responseSpeech = GetResponse(_isPersonHereNegativeResponses, name);
+                    }
+                }
+            }
+
+            var response = ResponseBuilder.Tell(new PlainTextOutputSpeech()
+            {
+                Text = responseSpeech
+            });
+
+            return response;
+        }
+
+        private async Task<SkillResponse> HandlePersonCameToWorkToday(SkillRequest input, ILambdaLogger logger)
+        {
+            IntentRequest intentRequest = input.Request as IntentRequest;
+            logger.LogLine($"IntentRequest {intentRequest.Intent.Name} made");
+
+            string responseSpeech = "Sorry, I don't know this person.";
+
+            if (intentRequest.DialogState == DialogState.Started ||
+                intentRequest.DialogState != DialogState.Completed)
+            {
+                // Pre-fill slots: update the intent object with slot values for which
+                // you have defaults, then return Dialog.Delegate with this updated intent
+                // in the updatedIntent property.
+                return ResponseBuilder.DialogDelegate(input.Session);
+            }
+            else
+            {
+
+                if (intentRequest.Intent.Slots.TryGetValue("name", out var nameSlot))
+                {
+                    string name = nameSlot.Value.ToLower();
+
+                    logger.LogLine($"Looking for person with name: {name}");
+
+                    // Create  dynamodb client  
+                    var dynamoDbClient = new AmazonDynamoDBClient(
+                        new AmazonDynamoDBConfig
+                        {
+                            RegionEndpoint = RegionEndpoint.USEast1
+                        });
+
+                    var request = new GetItemRequest
+                    {
+                        TableName = _TableName,
+                        Key = new Dictionary<string, AttributeValue>() { { "Username", new AttributeValue { S = name } } },
+                    };
+                    var dbResponse = await dynamoDbClient.GetItemAsync(request);
+
+                    // Check the response.
+                    var result = dbResponse.Item;
+
+                    if ((result != null) && (result.Count != 0))
+                    {
+                        string lastTimeInOfficeString = result.ContainsKey("LastTimeInOffice") ? result["LastTimeInOffice"].S : null;
+
+                        if (!string.IsNullOrEmpty(lastTimeInOfficeString) &&
+                            lastTimeInOfficeString.Equals(DateTime.Now.ToShortDateString()))
+                        {
+                            responseSpeech = GetResponse(_isPersonHereTodayResponses, name);
+                        }
+                        else
+                        {
+                            responseSpeech = GetResponse(_isPersonNotHereTodayResponses, name);
+                        }
                     }
                 }
             }
