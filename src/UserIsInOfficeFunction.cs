@@ -10,14 +10,14 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace AccediaLocator.PersoIsInOffice
+namespace AccediaLocator
 {
     public class UserIsInOfficeFunction
     {
         #region Constants
         private const string _TableName = "accedia-locator-users";
         #endregion
-        
+
         #region Function handler
         /// <summary>
         /// The function handler which is called, when the lambda is being called
@@ -28,7 +28,7 @@ namespace AccediaLocator.PersoIsInOffice
         public async Task<SkillResponse> FunctionHandler(SkillRequest input, ILambdaContext context)
         {
             var logger = context.Logger;
-            
+
             switch (input.Request)
             {
                 case LaunchRequest launchRequest: return HandleLaunch(launchRequest, logger);
@@ -45,6 +45,7 @@ namespace AccediaLocator.PersoIsInOffice
             _isPersonHerePositiveResponses = InitializeIsPersonHerePositiveResponses();
             _isPersonHereNegativeResponses = InitializeIsPersonHereNegativeResponses();
             _whereIsPersonResponses = InitializeWhereIsPersonResponses();
+            _somewhereInOfficeResponses = InitializeSomewhereInOfficeResponses();
         }
         #endregion
 
@@ -52,6 +53,7 @@ namespace AccediaLocator.PersoIsInOffice
         private List<string> _isPersonHerePositiveResponses;
         private List<string> _isPersonHereNegativeResponses;
         private List<string> _whereIsPersonResponses;
+        private List<string> _somewhereInOfficeResponses;
 
         private List<string> InitializeWhereIsPersonResponses()
         {
@@ -98,29 +100,25 @@ namespace AccediaLocator.PersoIsInOffice
             return responses;
         }
 
-        private string GetPersonIsHerePositiveResponse(string name)
+        private List<string> InitializeSomewhereInOfficeResponses()
         {
-            Random rand = new Random();
-            int index = rand.Next(0, _isPersonHerePositiveResponses.Count);
-
-            return string.Format(this._isPersonHerePositiveResponses[index], name);
+            return new List<string>
+            {
+                "{0} is somewhere in the office",
+                "{0} jumps to often from room to room in the office to track him",
+                "{0} is probably sleeping again somewhere in the office. Don't interrupt him!",
+                "I guess that {0} is running around the office as usual"
+            };
         }
 
-        private string GetPersonIsHereNegativeResponse(string name)
+        private string GetResponse(List<string> responses, params string[] pars)
         {
             Random rand = new Random();
-            int index = rand.Next(0, _isPersonHereNegativeResponses.Count);
+            int index = rand.Next(0, responses.Count);
 
-            return string.Format(this._isPersonHereNegativeResponses[index], name);
+            return string.Format(responses[index], pars);
         }
 
-        private string GetWhereIsPersonResponse(string name, string room)
-        {
-            Random rand = new Random();
-            int index = rand.Next(0, _whereIsPersonResponses.Count);
-
-            return string.Format(this._whereIsPersonResponses[index], name, room);
-        }
         #endregion
 
         #region Handle alexa requests
@@ -133,7 +131,7 @@ namespace AccediaLocator.PersoIsInOffice
             {
                 return await HandleIsPersonInOfficeIntent(intentRequest, logger);
             }
-            else if(intentRequest.Intent.Name == "WhereIsPersonIntent")
+            else if (intentRequest.Intent.Name == "WhereIsPersonIntent")
             {
                 return await HandlewhereIsPersonIntent(intentRequest, logger);
             }
@@ -162,21 +160,28 @@ namespace AccediaLocator.PersoIsInOffice
                 var request = new GetItemRequest
                 {
                     TableName = _TableName,
-                    Key = new Dictionary<string, AttributeValue>() { { "Username", new AttributeValue { S = name} } },
+                    Key = new Dictionary<string, AttributeValue>() { { "Username", new AttributeValue { S = name } } },
                 };
                 var dbResponse = await dynamoDbClient.GetItemAsync(request);
-                
+
                 // Check the response.
                 var result = dbResponse.Item;
 
                 if ((result != null) && (result.Count != 0))
                 {
-                    string room = result["Room"].S;
+                    string room = result["Room"].S.ToLowerInvariant();
                     bool isInOffice = result["IsInOffice"].BOOL;
 
                     if (isInOffice)
                     {
-                        responseSpeech = GetWhereIsPersonResponse(name, room);
+                        if (room == "somewhere")
+                        {
+                            responseSpeech = GetResponse(_somewhereInOfficeResponses, name);
+                        }
+                        else
+                        {
+                            responseSpeech = GetResponse(_whereIsPersonResponses, name, room);
+                        }
                     }
                     else
                     {
@@ -222,7 +227,7 @@ namespace AccediaLocator.PersoIsInOffice
                 var request = new GetItemRequest
                 {
                     TableName = _TableName,
-                    Key = new Dictionary<string, AttributeValue>() { { "Username", new AttributeValue { S = name} } },
+                    Key = new Dictionary<string, AttributeValue>() { { "Username", new AttributeValue { S = name } } },
                 };
                 var dbResponse = await dynamoDbClient.GetItemAsync(request);
 
@@ -235,11 +240,11 @@ namespace AccediaLocator.PersoIsInOffice
 
                     if (isInOffice)
                     {
-                        responseSpeech = GetPersonIsHerePositiveResponse(name);
+                        responseSpeech = GetResponse(_isPersonHerePositiveResponses, name);
                     }
                     else
                     {
-                        responseSpeech = GetPersonIsHereNegativeResponse(name);
+                        responseSpeech = GetResponse(_isPersonHereNegativeResponses, name);
                     }
                 }
             }
@@ -263,7 +268,7 @@ namespace AccediaLocator.PersoIsInOffice
             });
 
             return response;
-        } 
+        }
         #endregion
     }
 }

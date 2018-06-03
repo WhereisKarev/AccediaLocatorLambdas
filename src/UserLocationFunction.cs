@@ -33,32 +33,55 @@ namespace AccediaLocator
             // Update location of user
             LambdaLogger.Log("Update location for record");
 
+            locationModel.Username = locationModel.Username.ToLowerInvariant();
+            locationModel.Room = locationModel.Room.ToLowerInvariant();
+
             if (!locationModel.IsInOffice)
             {
-                locationModel.Room = "Out";
+                locationModel.Room = "out";
             }
-            else if(string.IsNullOrWhiteSpace(locationModel.Room))
+            else if (string.IsNullOrWhiteSpace(locationModel.Room))
             {
                 throw new ArgumentNullException("room");
             }
-
-            await dynamoDbClient.UpdateItemAsync(new UpdateItemRequest
+            else if (locationModel.Room == "somewhere")
             {
-                Key = new Dictionary<string, AttributeValue>
+                await dynamoDbClient.UpdateItemAsync(new UpdateItemRequest
                 {
-                    { "Username", new AttributeValue(locationModel.Username.ToLowerInvariant()) }
-                },
-                TableName = _tableName,
-                UpdateExpression = "SET IsInOffice = :o, Room = :r, RoomHistory = list_append(if_not_exists(RoomHistory, :empty_list), :room_history_record)",
-                ConditionExpression = "Room <> :r",
-                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    Key = new Dictionary<string, AttributeValue>
+                    {
+                        { "Username", new AttributeValue(locationModel.Username) }
+                    },
+                    TableName = _tableName,
+                    UpdateExpression = "SET IsInOffice = :o, Room = :r",
+                    ConditionExpression = "Room <> :r",
+                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    {
+                        { ":o", new AttributeValue{ BOOL = locationModel.IsInOffice} },
+                        { ":r", new AttributeValue { S = locationModel.Room } }
+                    }
+                });
+            }
+            else
+            {
+                await dynamoDbClient.UpdateItemAsync(new UpdateItemRequest
                 {
-                    { ":o", new AttributeValue{ BOOL = locationModel.IsInOffice} },
-                    { ":r", new AttributeValue { S = locationModel.Room } },
-                    { ":room_history_record", new AttributeValue { L = new List<AttributeValue>{ new AttributeValue { S = locationModel.Room } } } },
-                    { ":empty_list", new AttributeValue { IsLSet = true } },
-                }
-            });
+                    Key = new Dictionary<string, AttributeValue>
+                    {
+                        { "Username", new AttributeValue(locationModel.Username) }
+                    },
+                    TableName = _tableName,
+                    UpdateExpression = "SET IsInOffice = :o, Room = :r, RoomHistory = list_append(if_not_exists(RoomHistory, :empty_list), :room_history_record)",
+                    ConditionExpression = "Room <> :r",
+                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    {
+                        { ":o", new AttributeValue{ BOOL = locationModel.IsInOffice} },
+                        { ":r", new AttributeValue { S = locationModel.Room } },
+                        { ":room_history_record", new AttributeValue { L = new List<AttributeValue>{ new AttributeValue { S = locationModel.Room } } } },
+                        { ":empty_list", new AttributeValue { IsLSet = true } },
+                    }
+                });
+            }
 
             //Write Log to cloud watch using context.Logger.Log Method  
             context.Logger.Log(string.Format("Finished execution for function -- {0} at {1}",
