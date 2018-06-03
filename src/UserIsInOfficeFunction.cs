@@ -6,8 +6,10 @@ using Amazon;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Lambda.Core;
+using F23.StringSimilarity;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace AccediaLocator
@@ -149,6 +151,12 @@ namespace AccediaLocator
         private async Task<SkillResponse> HandleIntent(SkillRequest skillRequest, ILambdaLogger logger)
         {
             IntentRequest intentRequest = skillRequest.Request as IntentRequest;
+
+            if (intentRequest.Intent.ConfirmationStatus == ConfirmationStatus.Denied)
+            {
+                return ResponseBuilder.Tell("Then I cannot help you!");
+            }
+
             if (intentRequest.Intent.Name == "PersonIsInOfficeIntent")
             {
                 return await HandleIsPersonInOfficeIntent(intentRequest, logger);
@@ -217,6 +225,14 @@ namespace AccediaLocator
                         responseSpeech = $"{name} has not arrived at the office yet.";
                     }
                 }
+                else
+                {
+                    var unkknownUserResponse = await HandleUnknownUser(intentRequest, dynamoDbClient, name);
+                    if (unkknownUserResponse != null)
+                    {
+                        return unkknownUserResponse;
+                    }
+                }
             }
 
             var response = ResponseBuilder.Tell(new PlainTextOutputSpeech()
@@ -277,6 +293,14 @@ namespace AccediaLocator
                     else
                     {
                         responseSpeech = GetResponse(_isPersonHereNegativeResponses, name);
+                    }
+                }
+                else
+                {
+                    var unkknownUserResponse = await HandleUnknownUser(intentRequest, dynamoDbClient, name);
+                    if (unkknownUserResponse != null)
+                    {
+                        return unkknownUserResponse;
                     }
                 }
             }
@@ -344,6 +368,14 @@ namespace AccediaLocator
                             responseSpeech = GetResponse(_isPersonNotHereTodayResponses, name);
                         }
                     }
+                    else
+                    {
+                        var unkknownUserResponse = await HandleUnknownUser(intentRequest, dynamoDbClient, name);
+                        if (unkknownUserResponse != null)
+                        {
+                            return unkknownUserResponse;
+                        }
+                    }
                 }
             }
 
@@ -353,6 +385,37 @@ namespace AccediaLocator
             });
 
             return response;
+        }
+
+        private async Task<SkillResponse> HandleUnknownUser(IntentRequest intentRequest, AmazonDynamoDBClient dynamoDbClient, string name)
+        {
+            var allUsers = await dynamoDbClient.ScanAsync(new ScanRequest
+            {
+                TableName = _TableName,
+                ProjectionExpression = "Username"
+            });
+
+            if (allUsers != null && allUsers.Count > 0)
+            {
+                var l = new Levenshtein();
+
+                var bestMatchedName = allUsers.Items
+                    .Select(x => x["Username"].S)
+                    .OrderBy(x => l.Distance(x, name))
+                    .FirstOrDefault();
+
+                if (bestMatchedName != null)
+                {
+                    intentRequest.Intent.Slots.TryAdd("name", new Slot { Value = bestMatchedName });
+                    intentRequest.Intent.Slots["name"].Value = bestMatchedName;
+                    return ResponseBuilder.DialogConfirmIntent(new PlainTextOutputSpeech
+                    {
+                        Text = $"I did not find {name}, do you mean {bestMatchedName}"
+                    }, intentRequest.Intent);
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

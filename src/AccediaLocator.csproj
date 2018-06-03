@@ -13,6 +13,7 @@
 
     <PackageReference Include="Amazon.Lambda.DynamoDBEvents" Version="1.0.1" />
     <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.3.8" />
+    <PackageReference Include="F23.StringSimilarity" Version="3.0.0" />
     
   </ItemGroup>
 
